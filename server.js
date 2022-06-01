@@ -1,3 +1,4 @@
+const message = require("./message.js")
 require("dotenv").config();
 const express = require("express");
 const axios = require("axios").default;
@@ -7,28 +8,20 @@ const port = 3000;
 
 app.use(express.json());
 
-app.get("/", (req, res) => res.send(`
-  <html>
-    <head><title></title></head>
-    <body>
-    </body>
-  </html>
-`));
-
-app.post("/", (req, res) => {
+app.post("/", async (req, res) => {
   //st = JSON.stringify(req);
   //FileSystem.writeFile('./sample_file.JSON');
-  const content = req.body.object_kind;
+  text = await message.slack_msg(req.body);
   axios
     .post(process.env.SLACK_WEBHOOK_URL, {
-      "text": `Type of object is ${content}`,
+      "text": text,
       "channel" : "Random"
     })
     .then((slackResponse) => {
-      console.log("Success!");
+      console.log("Connection Established with Slack");
       res.status(204).send();
     })
-    .catch((err) => console.error(`${err}`));
+    .catch((err) => console.error(`Error: ${err}`));
 });
 
 app.use((error, req, res, next) => {
@@ -39,5 +32,5 @@ app.use((error, req, res, next) => {
 })
 
 app.listen(port, () =>
-  console.log(`Demo app listening at http://localhost:${port}`)
+  console.log(`Server listening at http://localhost:${port}`)
 );
