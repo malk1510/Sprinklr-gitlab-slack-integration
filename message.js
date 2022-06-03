@@ -63,6 +63,29 @@ async function get_reviewers(project_id, mr_iid){
 
 }
 
+async function get_assignees_using_mr_request(project_id, mr_iid){
+    let assignee_list = [];
+    let link = `https://gitlab.com/api/v4/projects/${project_id}/merge_requests/${mr_iid}`;
+    console.log(link);
+            
+    //text = "New Merge Request";
+    console.log("API Call started");
+    let response = await callback_func(link);
+    console.log("\n\n MERGE REQUEST:\n");
+    console.log("Data Received");
+    console.log(response);
+
+    let assignees = response.assignees;
+    for(let i=0; i<assignees.length; i++){
+        //let temp = await callback_func_with_auth(`https://gitlab.com/api/v4/users/${reviewers[i].id}`, process.env.GITLAB_USERS_TOKEN);
+        //let temp2 = await callback_func_with_auth(`https://slack.com/api/users.lookupByEmail?email=${temp.public_email}`, process.env.SLACK_TOKEN);
+        let name = await get_real_name(assignees[i].id);
+        assignee_list.push(name);
+    }
+
+    return assignee_list;  
+}
+
 async function get_assignees(assignees){
     let assignee_list = [];
     for(let i=0; i<assignees.length; i++){
@@ -71,6 +94,56 @@ async function get_assignees(assignees){
         assignee_list.push(name);
     }
     return assignee_list;
+}
+
+async function all_mrs_msg(proj_id){
+    let mr_list = await callback_func(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests`);
+    let text = `LIST OF ALL PENDING MERGE REQUESTS:`;
+    let count = 0;
+    for(let i=0; i<mr_list.length; i++){
+        let mr = mr_list[i];
+        let mr_id = mr.iid;
+        if(mr.state == "opened"){
+            count++;
+            text += `\n\n\t ${count}. LINK: ${mr.web_url} \n REVIEWERS:`;
+            let reviewer_list = await get_reviewers(proj_id, mr_id);
+            for(let j=0; j<reviewer_list.length; j++){
+                text += ` <@${reviewer_list[j]}>`;
+            }
+            text += `\n ASSIGNEES: `;
+            let assignee_list = await get_assignees_using_mr_request(proj_id, mr_id);
+            for(let j=0; j<assignee_list.length; j++){
+                text += ` <@${assignee_list[j]}>`;
+            }
+        }
+    }
+    return text;
+}
+
+async function all_discussions_msg(proj_id){
+    let mr_list = await callback_func(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests`);
+    let text = `LIST OF ALL PENDING COMMENTS:`;
+    let count = 0;
+    for(let i=0; i<mr_list.length; i++){
+        let mr = mr_list[i];
+        let mr_id = mr.iid;
+        if(mr.state == "opened"){
+            let comments_in_mr = await callback_func_with_auth(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests/${mr_id}/discussions`, process.env.GITLAB_USERS_TOKEN);
+            for(let j=0; j<mr_list.length; j++){
+                let comment = comments_in_mr[j].notes[0];
+                if(comment.resolvable && !comment.resolved){
+                    count++;
+                    text += `\n\n ${count}. ${comment.body}\n MR LINK: ${mr.web_url}`;
+                    text += `\nASSIGNEES: `;
+                    let assignee_list = await get_assignees_using_mr_request(proj_id, mr_id);
+                    for(let k=0; k<assignee_list.length; k++){
+                        text += `<@${assignee_list[k]}>`;
+                    }
+                }
+            }
+        }
+    }
+    return text;
 }
 
 async function slack_msg(trig){
@@ -170,6 +243,11 @@ async function slack_msg(trig){
                     text += ` <@${reviewer_list[i]}>`;
                 }                
             }
+
+            /*console.log("\n\nMERGE REQUEST COMMENTS\n");
+            let link = `https://gitlab.com/api/v4/projects/${id}/merge_requests/${merge_request_id}/notes`;
+            let response = await callback_func(link);
+            console.log(response);*/
             break;
         
         case "issue":
@@ -199,7 +277,7 @@ async function slack_msg(trig){
             name = await get_real_name_using_email(trig.user.email);
             console.log("COMMENT");
             console.log(trig);
-            if(trig.object_attributes.noteable_type == "MergeRequest"){
+            if(trig.object_attributes.noteable_type === "MergeRequest"){
                 text = `New comment added to Merge Request: ${trig.object_attributes.url}`;
                 text += `\nMerge Request Link: ${trig.merge_request.url}`;
                 text += `\n\nAssignees: `;
@@ -207,6 +285,12 @@ async function slack_msg(trig){
                     let temp = await get_real_name(trig.merge_request.assignee_ids[i]);
                     text += ` <@${temp}>`;
                 }
+                console.log("\n\nMERGE REQUEST COMMENTS\n");
+                let id = trig.project_id;
+                let merge_request_id = trig.merge_request.iid;
+                let link = `https://gitlab.com/api/v4/projects/${id}/merge_requests/${merge_request_id}/notes`;
+                let response = await callback_func_with_auth(link, process.env.GITLAB_USERS_TOKEN);
+                console.log(response);
             }
             else{
                 text = `New Comment made by <@${name}>, for a ${trig.object_attributes.noteable_type}`;
@@ -248,8 +332,12 @@ async function slack_msg(trig){
             text = `New Notification for <@${name}>: ${trig.object_kind} Obtained`;
             text += `LINK: ${trig.object_attributes.url}`;
     }
+
+    //let id = trig.project.id;
+    //text += await all_mrs_msg(id);
+    //text += await all_discussions_msg(id);
     return text;
 }
 
 
-module.exports = {slack_msg};
+module.exports = {slack_msg, all_discussions_msg, all_mrs_msg};
