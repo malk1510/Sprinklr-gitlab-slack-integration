@@ -39,6 +39,14 @@ async function get_real_name(user_id){
     return real_name;
 }
 
+async function get_summary(project_id){
+    let open_date = new Date(new Date().getTime() - 24*60*60*1000);
+    let temp = await callback_func_with_auth(`https://gitlab.com/api/v4/projects/${project_id}/merge_requests?state=opened`, process.env.GITLAB_USERS_TOKEN);
+    let temp2 = await callback_func_with_auth(`https://gitlab.com/api/v4/projects/${project_id}/merge_requests?created_after=${open_date.toISOString()}`, process.env.GITLAB_USERS_TOKEN);
+    let text = `SUMMARY:\n PENDING MERGE REQUESTS: ${temp.length}\n MERDGE REQUESTS OPENED TODAY: ${temp2.length}`;
+    return text;
+}
+
 async function get_reviewers(project_id, mr_iid){
     let reviewer_list = [];
     let link = `https://gitlab.com/api/v4/projects/${project_id}/merge_requests/${mr_iid}`;
@@ -96,8 +104,9 @@ async function get_assignees(assignees){
     return assignee_list;
 }
 
-async function all_mrs_msg(proj_id){
-    let mr_list = await callback_func(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests`);
+async function all_mrs_msg(proj_id, time){
+    let prev_date = (new Date(new Date().getTime() - time)).toISOString();
+    let mr_list = await callback_func(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests?updated_before=${prev_date}`);
     let text = `LIST OF ALL PENDING MERGE REQUESTS:`;
     let count = 0;
     for(let i=0; i<mr_list.length; i++){
@@ -120,18 +129,87 @@ async function all_mrs_msg(proj_id){
     return text;
 }
 
-async function all_discussions_msg(proj_id){
-    let mr_list = await callback_func(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests`);
+async function all_discussions_msg(proj_id, time){
+    let prev_date = (new Date(new Date().getTime() - time)).toISOString();
+    let mr_list = await callback_func(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests?updated_before=${prev_date}`);
     let text = `LIST OF ALL PENDING COMMENTS:`;
     let count = 0;
     for(let i=0; i<mr_list.length; i++){
         let mr = mr_list[i];
         let mr_id = mr.iid;
+        let page = 1;
         if(mr.state == "opened"){
-            let comments_in_mr = await callback_func_with_auth(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests/${mr_id}/discussions`, process.env.GITLAB_USERS_TOKEN);
-            for(let j=0; j<mr_list.length; j++){
+            while(true){
+            let comments_in_mr = await callback_func_with_auth(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests/${mr_id}/discussions?page=${page}`, process.env.GITLAB_USERS_TOKEN);
+            page++;
+            if(comments_in_mr.length == 0)
+                break;
+            for(let j=0; j<comments_in_mr.length; j++){
                 let comment = comments_in_mr[j].notes[0];
                 if(comment.resolvable && !comment.resolved){
+                    count++;
+                    text += `\n\n ${count}. ${comment.body}\n MR LINK: ${mr.web_url}`;
+                    text += `\nASSIGNEES: `;
+                    let assignee_list = await get_assignees_using_mr_request(proj_id, mr_id);
+                    for(let k=0; k<assignee_list.length; k++){
+                        text += `<@${assignee_list[k]}>`;
+                    }
+                }
+            }
+        }
+    }
+    }
+    return text;
+}
+
+async function notify_mr(proj_id, thresh_time){
+    let prev_date = (new Date(new Date().getTime() - thresh_time)).toISOString();
+    let next_date =  (new Date(new Date().getTime() - thresh_time + 60000)).toISOString();
+    console.log(`\nPREVIOUS DATE: ${prev_date}`);
+    console.log(`\nNEXT DATE: ${next_date}`);
+    let mr_list = await callback_func(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests?created_before=${next_date}&created_after=${prev_date}&state=opened`);
+    let text = `REMINDER!! PENDING MERGE REQUESTS:`;
+    let count = 0;
+    if(mr_list.length == 0)
+        return '';
+    for(let i=0; i<mr_list.length; i++){
+        let mr = mr_list[i];
+        let mr_id = mr.iid;
+        count++;
+        text += `\n\n\t ${count}. LINK: ${mr.web_url} \n REVIEWERS:`;
+        let reviewer_list = await get_reviewers(proj_id, mr_id);
+        for(let j=0; j<reviewer_list.length; j++){
+            text += ` <@${reviewer_list[j]}>`;
+        }
+        text += `\n ASSIGNEES: `;
+        let assignee_list = await get_assignees_using_mr_request(proj_id, mr_id);
+        for(let j=0; j<assignee_list.length; j++){
+            text += ` <@${assignee_list[j]}>`;
+        }
+    }
+    return text;
+}
+
+async function notify_comment(proj_id, thresh_time){
+    let prev_date = (new Date(new Date().getTime() - thresh_time)).toISOString();
+    let next_date =  (new Date(new Date().getTime() - thresh_time + 60000)).toISOString();
+    let mr_list = await callback_func(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests?updated_before=${next_date}&updated_after=${prev_date}&state=opened`);
+    let text = `REMINDER!! PENDING UNRESOLVED DISCUSSIONS:`;
+    let count = 0;
+    if(mr_list.length == 0)
+        return '';
+    for(let i=0; i<mr_list.length; i++){
+        let mr = mr_list[i];
+        let mr_id = mr.iid;
+        let page = 1;
+        while(true){
+            let comments_in_mr = await callback_func_with_auth(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests/${mr_id}/discussions?page=${page}`, process.env.GITLAB_USERS_TOKEN);
+            page++;
+            if(comments_in_mr.length == 0)
+                break;
+            for(let j=0; j<comments_in_mr.length; j++){
+                let comment = comments_in_mr[j].notes[0];
+                if(comment.resolvable && !comment.resolved){ 
                     count++;
                     text += `\n\n ${count}. ${comment.body}\n MR LINK: ${mr.web_url}`;
                     text += `\nASSIGNEES: `;
@@ -340,4 +418,4 @@ async function slack_msg(trig){
 }
 
 
-module.exports = {slack_msg, all_discussions_msg, all_mrs_msg};
+module.exports = {slack_msg, all_discussions_msg, all_mrs_msg, get_summary, notify_mr, notify_comment};
