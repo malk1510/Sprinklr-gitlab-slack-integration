@@ -1,7 +1,7 @@
 const message = require("./message.js")
 require("dotenv").config();
 const express = require("express");
-const { set } = require("express/lib/application");
+const { set, all } = require("express/lib/application");
 const axios = require("axios").default;
 
 const app = express();
@@ -39,8 +39,8 @@ app.listen(port, () =>
   console.log(`Server listening at http://localhost:${port}`)
 );
 
-async function print_every_hour(){
-  let text = await message.all_mrs_msg(36472059);
+async function print_every_hour(time){
+  let text = await message.all_mrs_msg(36472059, time);
   axios
   .post(process.env.SLACK_WEBHOOK_URL, {
     "text": text,
@@ -48,10 +48,10 @@ async function print_every_hour(){
   })
   .then((slackResponse) => {
     console.log("Connection Established with Slack");
-    res.status(204).send();
+    //res.status(204).send();
   })
   .catch((err) => console.error(`Error: ${err}`));
-  text = await message.all_discussions_msg(36472059);
+  text = await message.all_discussions_msg(36472059, time);
   axios
   .post(process.env.SLACK_WEBHOOK_URL, {
     "text": text,
@@ -59,9 +59,56 @@ async function print_every_hour(){
   })
   .then((slackResponse) => {
     console.log("Connection Established with Slack");
-    res.status(204).send();
+    //res.status(204).send();
   })
   .catch((err) => console.error(`Error: ${err}`));
+  setTimeout(function() {print_every_hour(time)}, time);
 }
 
-setInterval(print_every_hour, 3600000);
+async function print_every_day(){
+  let text = await message.get_summary(36472059);
+  axios
+  .post(process.env.SLACK_WEBHOOK_URL, {
+    "text": text,
+    "channel" : "Random"
+  })
+  .then((slackResponse) => {
+    console.log("Connection Established with Slack");
+    //res.status(204).send();
+  })
+  .catch((err) => console.error(`Error: ${err}`));
+  setTimeout(print_every_day, 24*60*60*1000);
+}
+
+async function notify(thresh_time){
+  let text = await message.notify_mr(36472059, thresh_time);
+  if(text !== ''){
+  axios
+  .post(process.env.SLACK_WEBHOOK_URL, {
+    "text": text,
+    "channel" : "Random"
+  })
+  .then((slackResponse) => {
+    console.log("Connection Established with Slack");
+    //res.status(204).send();
+  })
+  .catch((err) => console.error(`Error: ${err}`));}
+  text = await message.notify_comment(36472059, thresh_time);
+  if(text !== ''){
+  axios
+  .post(process.env.SLACK_WEBHOOK_URL, {
+    "text": text,
+    "channel" : "Random"
+  })
+  .then((slackResponse) => {
+    console.log("Connection Established with Slack");
+    //res.status(204).send();
+  })
+  .catch((err) => console.error(`Error: ${err}`));}
+  setTimeout(function() {notify(thresh_time);}, 60000);
+}
+
+//print_every_hour();
+print_every_hour(70000);
+print_every_day();
+notify(120000);
