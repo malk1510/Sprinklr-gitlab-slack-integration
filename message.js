@@ -1,5 +1,20 @@
 const { default: axios } = require("axios");
 
+let iid_list = [];
+
+async function jira_api_call(link){
+    const response = await axios.get(link, {
+        headers:{
+            'Content-Type':'application/json'
+        },
+        auth:{
+            username: process.env.JIRA_EMAIL_ID,
+            password: process.env.JIRA_PASSWORD
+        }
+    });
+    return response.data;
+}
+
 async function callback_func(link){
     const response = await axios.get(link);
     console.log("API Call Occured");
@@ -54,7 +69,7 @@ async function get_reviewers(project_id, mr_iid){
             
     //text = "New Merge Request";
     console.log("API Call started");
-    let response = await callback_func(link);
+    let response = await callback_func_with_auth(link, process.env.GITLAB_USERS_TOKEN);
     console.log("\n\n MERGE REQUEST:\n");
     console.log("Data Received");
     console.log(response);
@@ -78,7 +93,7 @@ async function get_assignees_using_mr_request(project_id, mr_iid){
             
     //text = "New Merge Request";
     console.log("API Call started");
-    let response = await callback_func(link);
+    let response = await callback_func_with_auth(link, process.env.GITLAB_USERS_TOKEN);
     console.log("\n\n MERGE REQUEST:\n");
     console.log("Data Received");
     console.log(response);
@@ -106,12 +121,13 @@ async function get_assignees(assignees){
 
 async function all_mrs_msg(proj_id, time){
     let prev_date = (new Date(new Date().getTime() - time)).toISOString();
-    let mr_list = await callback_func(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests?updated_before=${prev_date}`);
+    let mr_list = await callback_func_with_auth(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests?updated_before=${prev_date}`, process.env.GITLAB_USERS_TOKEN);
     let text = `LIST OF ALL PENDING MERGE REQUESTS:`;
     let count = 0;
     for(let i=0; i<mr_list.length; i++){
         let mr = mr_list[i];
         let mr_id = mr.iid;
+        if(!iid_list.includes(mr_id)){
         if(mr.state == "opened"){
             count++;
             text += `\n\n\t ${count}. LINK: ${mr.web_url} \n REVIEWERS:`;
@@ -124,20 +140,22 @@ async function all_mrs_msg(proj_id, time){
             for(let j=0; j<assignee_list.length; j++){
                 text += ` <@${assignee_list[j]}>`;
             }
+            console.log(text);
         }
-    }
+    }}
     return text;
 }
 
 async function all_discussions_msg(proj_id, time){
     let prev_date = (new Date(new Date().getTime() - time)).toISOString();
-    let mr_list = await callback_func(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests?updated_before=${prev_date}`);
+    let mr_list = await callback_func_with_auth(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests?updated_before=${prev_date}`, process.env.GITLAB_USERS_TOKEN);
     let text = `LIST OF ALL PENDING COMMENTS:`;
     let count = 0;
     for(let i=0; i<mr_list.length; i++){
         let mr = mr_list[i];
         let mr_id = mr.iid;
         let page = 1;
+        if(!iid_list.includes(mr_id)){
         if(mr.state == "opened"){
             while(true){
             let comments_in_mr = await callback_func_with_auth(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests/${mr_id}/discussions?page=${page}`, process.env.GITLAB_USERS_TOKEN);
@@ -157,17 +175,17 @@ async function all_discussions_msg(proj_id, time){
                 }
             }
         }
-    }
+    }}
     }
     return text;
 }
 
 async function notify_mr(proj_id, thresh_time){
-    let prev_date = (new Date(new Date().getTime() - thresh_time)).toISOString();
+    let prev_date = (new Date(new Date().getTime() - thresh_time - 2000)).toISOString();
     let next_date =  (new Date(new Date().getTime() - thresh_time + 60000)).toISOString();
     console.log(`\nPREVIOUS DATE: ${prev_date}`);
     console.log(`\nNEXT DATE: ${next_date}`);
-    let mr_list = await callback_func(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests?created_before=${next_date}&created_after=${prev_date}&state=opened`);
+    let mr_list = await callback_func_with_auth(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests?created_before=${next_date}&created_after=${prev_date}&state=opened`, process.env.GITLAB_USERS_TOKEN);
     let text = `REMINDER!! PENDING MERGE REQUESTS:`;
     let count = 0;
     if(mr_list.length == 0)
@@ -175,6 +193,7 @@ async function notify_mr(proj_id, thresh_time){
     for(let i=0; i<mr_list.length; i++){
         let mr = mr_list[i];
         let mr_id = mr.iid;
+        if(!iid_list.includes(mr_id)){
         count++;
         text += `\n\n\t ${count}. LINK: ${mr.web_url} \n REVIEWERS:`;
         let reviewer_list = await get_reviewers(proj_id, mr_id);
@@ -185,15 +204,15 @@ async function notify_mr(proj_id, thresh_time){
         let assignee_list = await get_assignees_using_mr_request(proj_id, mr_id);
         for(let j=0; j<assignee_list.length; j++){
             text += ` <@${assignee_list[j]}>`;
-        }
+        }}
     }
     return text;
 }
 
 async function notify_comment(proj_id, thresh_time){
-    let prev_date = (new Date(new Date().getTime() - thresh_time)).toISOString();
+    let prev_date = (new Date(new Date().getTime() - thresh_time - 500)).toISOString();
     let next_date =  (new Date(new Date().getTime() - thresh_time + 60000)).toISOString();
-    let mr_list = await callback_func(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests?updated_before=${next_date}&updated_after=${prev_date}&state=opened`);
+    let mr_list = await callback_func_with_auth(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests?updated_before=${next_date}&updated_after=${prev_date}&state=opened`, process.env.GITLAB_USERS_TOKEN);
     let text = `REMINDER!! PENDING UNRESOLVED DISCUSSIONS:`;
     let count = 0;
     if(mr_list.length == 0)
@@ -201,6 +220,7 @@ async function notify_comment(proj_id, thresh_time){
     for(let i=0; i<mr_list.length; i++){
         let mr = mr_list[i];
         let mr_id = mr.iid;
+        if(!iid_list.includes(mr_id)){
         let page = 1;
         while(true){
             let comments_in_mr = await callback_func_with_auth(`https://gitlab.com/api/v4/projects/${proj_id}/merge_requests/${mr_id}/discussions?page=${page}`, process.env.GITLAB_USERS_TOKEN);
@@ -220,7 +240,7 @@ async function notify_comment(proj_id, thresh_time){
                 }
             }
         }
-    }
+    }}
     return text;
 }
 
@@ -228,10 +248,45 @@ async function slack_msg(trig){
     console.log(trig);
     let text = "";
     let name = "";
+
+    if(trig.webhookEvent!==undefined && trig.webhookEvent.substring(0,4) == 'jira'){
+        let id = trig.issue.id;
+        let link = `https://sample-team.atlassian.net/rest/dev-status/latest/issue/detail?issueId=${id}&applicationType=GitLab&dataType=pullrequest`;
+        let pr = await jira_api_call(link);
+        console.log(pr);
+        console.log(pr.detail);
+        if(pr.detail !== undefined){
+        let pr_list = pr.detail[0].pullRequests;
+        console.log(trig.issue.fields.status.name);
+        if(trig.issue.fields.status.name !== 'To Do'){
+            for(let i=0; i<pr_list.length; i++){
+                console.log(pr_list[i]);
+                let ch = pr_list[i].url[pr_list[i].url.length-1];
+                if(iid_list.indexOf(ch) == -1)
+                    iid_list.push(parseInt(ch));
+            }
+        }
+        else{
+            for(let i=0; i<pr_list.length; i++){
+                console.log(pr_list[i]);
+                let ch = pr_list[i].url[pr_list[i].url.length-1];
+                let ind = iid_list.indexOf(parseInt(ch));
+                if(ind >= 0)
+                    iid_list.splice(ind,1);
+            }
+        }}
+        console.log(`\n\nTHE IID LIST IS: ${iid_list} \n\n`);
+    }
+
+    else{
     switch(trig.object_kind){
         case "merge_request":
             let id = trig.project.id;
             let merge_request_id = trig.object_attributes.iid;
+            console.log(merge_request_id);
+            console.log(iid_list.includes(merge_request_id));
+            if(!iid_list.includes(merge_request_id)){
+                console.log(`THE IID LIST IS: ${iid_list}`);
             //console.log(`THE ID IS ${id}`);
             //console.log(`THE OTHER ID IS ${merge_request_id}`);
 
@@ -320,7 +375,7 @@ async function slack_msg(trig){
                 for(let i=0; i<reviewer_list.length; i++){
                     text += ` <@${reviewer_list[i]}>`;
                 }                
-            }
+            }}
 
             /*console.log("\n\nMERGE REQUEST COMMENTS\n");
             let link = `https://gitlab.com/api/v4/projects/${id}/merge_requests/${merge_request_id}/notes`;
@@ -337,7 +392,7 @@ async function slack_msg(trig){
 
             for(let i=0; i<trig.assignees.length; i++){
                 let ass_name = await get_real_name_using_email(trig.assignees[i].email);
-                issue_list.push(name);
+                issue_list.push(ass_name);
             }
             text = `ISSUE ${issue_action}`;
             text += `\n\n AUTHOR: <@${name}>`;
@@ -356,20 +411,21 @@ async function slack_msg(trig){
             console.log("COMMENT");
             console.log(trig);
             if(trig.object_attributes.noteable_type === "MergeRequest"){
+                let merge_request_id = trig.merge_request.iid;
+                if(!iid_list.includes(merge_request_id)){
                 text = `New comment added to Merge Request: ${trig.object_attributes.url}`;
                 text += `\nMerge Request Link: ${trig.merge_request.url}`;
                 text += `\n\nAssignees: `;
-                for(let i=0; i<trig.merge_request.assignee_ids.length; i++){
-                    let temp = await get_real_name(trig.merge_request.assignee_ids[i]);
-                    text += ` <@${temp}>`;
+                let assignee_list = await get_assignees_using_mr_request(trig.project.id, trig.merge_request.iid);
+                for(let i=0; i<assignee_list.length; i++){
+                    text += ` <@${assignee_list[i]}>`;
                 }
                 console.log("\n\nMERGE REQUEST COMMENTS\n");
                 let id = trig.project_id;
-                let merge_request_id = trig.merge_request.iid;
                 let link = `https://gitlab.com/api/v4/projects/${id}/merge_requests/${merge_request_id}/notes`;
                 let response = await callback_func_with_auth(link, process.env.GITLAB_USERS_TOKEN);
                 console.log(response);
-            }
+            }}
             else{
                 text = `New Comment made by <@${name}>, for a ${trig.object_attributes.noteable_type}`;
                 text += `\n\nLink for Comment: ${trig.object_attributes.url}`;
@@ -377,6 +433,8 @@ async function slack_msg(trig){
             break;
         
         case "pipeline":
+            let mr_id = trig.merge_request.iid;
+            if(!iid_list.includes(mr_id)){
             if(trig.object_attributes.status !== "success"){
                 console.log("\n\nPIPELINE FAILURE RESPONSE");
                 console.log(trig);
@@ -384,9 +442,9 @@ async function slack_msg(trig){
                 if(trig.merge_request != null){
                     text += `\nMerge Request Link: ${trig.merge_request.url}`;
                     text += `\n\nAssignees: `;
-                    for(let i=0; i<trig.merge_request.assignee_ids.length; i++){
-                        let temp = await get_real_name(trig.merge_request.assignee_ids[i]);
-                        text += ` <@${temp}>`;
+                    let assignee_list = await get_assignees_using_mr_request(trig.project.id, trig.merge_request.iid);
+                    for(let i=0; i<assignee_list.length; i++){
+                        text += ` <@${assignee_list[i]}>`;
                     }
                 }
             }
@@ -394,7 +452,7 @@ async function slack_msg(trig){
                 let id = trig.project.id;
                 let mrid = trig.merge_request.iid;
                 let link = `https://gitlab.com/api/v4/projects/${id}/merge_requests/${mrid}`;
-                let response = await callback_func(link);
+                let response = await callback_func_with_auth(link, process.env.GITLAB_USERS_TOKEN);
 
                 console.log("\n\nRESPONSE FOR MERGE REQUEST DETAILS");
                 console.log(response);
@@ -403,13 +461,11 @@ async function slack_msg(trig){
                     text = `MERGE REQUEST APPROVED: ${trig.object_attributes.url}`;
                     text += `\n<!here>`;      
                 }
-            }
+            }}
             break;
         default:
-            name = await get_real_name_using_email(trig.user.email);
-            text = `New Notification for <@${name}>: ${trig.object_kind} Obtained`;
-            text += `LINK: ${trig.object_attributes.url}`;
-    }
+            text = '';
+    }}
 
     //let id = trig.project.id;
     //text += await all_mrs_msg(id);
@@ -418,4 +474,4 @@ async function slack_msg(trig){
 }
 
 
-module.exports = {slack_msg, all_discussions_msg, all_mrs_msg, get_summary, notify_mr, notify_comment};
+module.exports = {slack_msg, all_discussions_msg, all_mrs_msg, get_summary, notify_mr, notify_comment, iid_list};

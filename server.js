@@ -5,7 +5,7 @@ const { set, all } = require("express/lib/application");
 const axios = require("axios").default;
 
 const app = express();
-const port = 3000;
+const port = 1800;
 
 app.use(express.json());
 
@@ -40,7 +40,7 @@ app.listen(port, () =>
 );
 
 async function print_every_hour(time){
-  let text = await message.all_mrs_msg(36472059, time);
+  let text = await message.all_mrs_msg(36881373, time);
   axios
   .post(process.env.SLACK_WEBHOOK_URL, {
     "text": text,
@@ -51,7 +51,7 @@ async function print_every_hour(time){
     //res.status(204).send();
   })
   .catch((err) => console.error(`Error: ${err}`));
-  text = await message.all_discussions_msg(36472059, time);
+  text = await message.all_discussions_msg(36881373, time);
   axios
   .post(process.env.SLACK_WEBHOOK_URL, {
     "text": text,
@@ -66,7 +66,7 @@ async function print_every_hour(time){
 }
 
 async function print_every_day(){
-  let text = await message.get_summary(36472059);
+  let text = await message.get_summary(36881373);
   axios
   .post(process.env.SLACK_WEBHOOK_URL, {
     "text": text,
@@ -81,7 +81,7 @@ async function print_every_day(){
 }
 
 async function notify(thresh_time){
-  let text = await message.notify_mr(36472059, thresh_time);
+  let text = await message.notify_mr(36881373, thresh_time);
   if(text !== ''){
   axios
   .post(process.env.SLACK_WEBHOOK_URL, {
@@ -93,7 +93,7 @@ async function notify(thresh_time){
     //res.status(204).send();
   })
   .catch((err) => console.error(`Error: ${err}`));}
-  text = await message.notify_comment(36472059, thresh_time);
+  text = await message.notify_comment(36881373, thresh_time);
   if(text !== ''){
   axios
   .post(process.env.SLACK_WEBHOOK_URL, {
@@ -109,6 +109,6 @@ async function notify(thresh_time){
 }
 
 //print_every_hour();
-print_every_hour(70000);
+print_every_hour(1000*3600);
 print_every_day();
-notify(120000);
+notify(1000*3600);
