@@ -108,7 +108,24 @@ async function notify(thresh_time){
   setTimeout(function() {notify(thresh_time);}, 60000);
 }
 
+async function in_progress_mrs(thresh_time){
+  let text = await message.get_wip_mrs(36881373, message.wip_list);
+  if(text !== ''){
+  axios
+  .post(process.env.SLACK_WEBHOOK_URL, {
+    "text": text,
+    "channel" : "Random"
+  })
+  .then((slackResponse) => {
+    console.log("Connection Established with Slack");
+    //res.status(204).send();
+  })
+  .catch((err) => console.error(`Error: ${err}`));}
+  setTimeout(function () {in_progress_mrs(thresh_time);}, thresh_time);
+}
+
 //print_every_hour();
 print_every_hour(1000*3600);
 print_every_day();
 notify(1000*3600);
+in_progress_mrs(1000*3600);
