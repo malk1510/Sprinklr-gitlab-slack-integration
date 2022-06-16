@@ -59,7 +59,7 @@ async function get_summary(project_id){
     let open_date = new Date(new Date().getTime() - 24*60*60*1000);
     let temp = await callback_func_with_auth(`https://gitlab.com/api/v4/projects/${project_id}/merge_requests?state=opened`, process.env.GITLAB_USERS_TOKEN);
     let temp2 = await callback_func_with_auth(`https://gitlab.com/api/v4/projects/${project_id}/merge_requests?created_after=${open_date.toISOString()}`, process.env.GITLAB_USERS_TOKEN);
-    let text = `SUMMARY:\n PENDING MERGE REQUESTS: ${temp.length}\n MERDGE REQUESTS OPENED TODAY: ${temp2.length}`;
+    let text = `SUMMARY:\n PENDING MERGE REQUESTS: ${temp.length}\n MERGE REQUESTS OPENED TODAY: ${temp2.length}`;
     return text;
 }
 
@@ -400,7 +400,7 @@ async function slack_msg(trig){
                 }}
             }
             else if(action == 'update'){
-
+                if(trig.object_attributes.title.substring(0,5) !== 'Draft'){
                 text = `MERGE REQUEST UPDATED`;
                 text += `\n\n STARTED BY: <@${merger_name}>`;
                 text += `\n\n LINK TO REPOSITORY: ${proj_link}`;
@@ -421,7 +421,7 @@ async function slack_msg(trig){
             else if(action == 'approved'){
                 text = `MERGE REQUEST APPROVED: ${trig.object_attributes.url}`;
                 text += `\n<!here>`;
-            }
+            }}
             /*console.log("\n\nMERGE REQUEST COMMENTS\n");
             let link = `https://gitlab.com/api/v4/projects/${id}/merge_requests/${merge_request_id}/notes`;
             let response = await callback_func(link);
@@ -478,7 +478,8 @@ async function slack_msg(trig){
             break;
         
         case "pipeline":
-            let mr_id = trig.merge_request.iid;
+            if(trig.merge_request != null){
+                let mr_id = trig.merge_request.iid;
             if(!iid_list.includes(mr_id)){
             if(trig.object_attributes.status !== "success"){
                 console.log("\n\nPIPELINE FAILURE RESPONSE");
@@ -506,7 +507,7 @@ async function slack_msg(trig){
                     text = `MERGE REQUEST APPROVED: ${trig.object_attributes.url}`;
                     text += `\n<!here>`;
                 }
-            }}
+            }}}
             break;
         default:
             text = '';
